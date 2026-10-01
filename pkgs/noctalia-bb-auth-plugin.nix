@@ -3,6 +3,7 @@
   stdenvNoCC,
   fetchFromGitHub,
   python3,
+  lua,
 }:
 
 stdenvNoCC.mkDerivation {
@@ -15,6 +16,8 @@ stdenvNoCC.mkDerivation {
     rev = "409d26d29faae6ed2fa1cbd44efba3d8f0eaa097";
     hash = "sha256-e7/A5VuzKkgp3RM1JtwfNqioi+S1SGAJ1QlUIE18Ub8=";
   };
+
+  patches = [ ./noctalia-bb-auth-compat.patch ];
 
   dontBuild = true;
 
@@ -66,6 +69,7 @@ stdenvNoCC.mkDerivation {
         for entry in manifest[kind]:
             assert (plugin / entry["entry"]).is_file(), entry
     PY
+    ${lua}/bin/lua ${../tests/plugin-runtime.lua} "$out/bb-auth"
     runHook postInstallCheck
   '';
 

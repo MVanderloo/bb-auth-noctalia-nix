@@ -1,0 +1,99 @@
+--- a/bb-auth/service.luau
++++ b/bb-auth/service.luau
+@@ -1,3 +1,12 @@
++-- Luau's os.clock is a high-resolution elapsed-time clock. Newer v5
++-- builds no longer export noctalia.nowMs.
++local function nowMs()
++    if type(noctalia.nowMs) == "function" then
++        return noctalia.nowMs()
++    end
++    return os.clock() * 1000
++end
++
+ local PLUGIN_ID = "branrgx/bb-auth"
+ local PANEL_ID = PLUGIN_ID .. ":prompt"
+ local BLOCKED_PANEL_ID = PLUGIN_ID .. ":blocked"
+@@ -423,7 +432,7 @@
+             result
+ 
+         pendingCloseAt =
+-            noctalia.nowMs()
++            nowMs()
+             + PINENTRY_GRACE_MS
+ 
+         return
+@@ -509,7 +518,7 @@
+         return
+     end
+ 
+-    if noctalia.nowMs()
++    if nowMs()
+         < pendingCloseAt
+     then
+         return
+--- a/bb-auth/panel.luau
++++ b/bb-auth/panel.luau
+@@ -1,3 +1,13 @@
++-- Noctalia's runAsync takes a shell command, not an argv table. Quote every
++-- argument: even a runtime directory can contain shell metacharacters.
++local function runAsync(argv)
++    local quoted = {}
++    for _, argument in ipairs(argv) do
++        table.insert(quoted, "'" .. string.gsub(argument, "'", "'\\''") .. "'")
++    end
++    return noctalia.runAsync(table.concat(quoted, " "))
++end
++
+ local password = ""
+ local inputRevision = 0
+ local submitted = false
+@@ -65,7 +75,7 @@
+     end
+ 
+     local started =
+-        noctalia.runAsync({
++        runAsync({
+             "python3",
+             pluginDir .. "/send.py",
+             path,
+@@ -135,10 +145,12 @@
+         return nil
+     end
+ 
+-    return noctalia.appIconPath(
+-        icon,
+-        48
+-    )
++    -- Some v5 builds no longer expose themed icon lookup to plugins.
++    if type(noctalia.appIconPath) == "function" then
++        return noctalia.appIconPath(icon, 48)
++    end
++
++    return nil
+ end
+ 
+ 
+--- a/bb-auth/blocked.luau
++++ b/bb-auth/blocked.luau
+@@ -1,3 +1,12 @@
++-- Match Noctalia's string-only runAsync API without shell injection.
++local function runAsync(argv)
++    local quoted = {}
++    for _, argument in ipairs(argv) do
++        table.insert(quoted, "'" .. string.gsub(argument, "'", "'\\''") .. "'")
++    end
++    return noctalia.runAsync(table.concat(quoted, " "))
++end
++
+ local cancelSent = false
+ 
+ 
+@@ -35,7 +44,7 @@
+         return false
+     end
+ 
+-    local started = noctalia.runAsync({
++    local started = runAsync({
+         "python3",
+         pluginDir .. "/send.py",
+         path,
