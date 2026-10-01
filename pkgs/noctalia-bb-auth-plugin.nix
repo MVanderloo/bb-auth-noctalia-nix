@@ -19,6 +19,12 @@ stdenvNoCC.mkDerivation {
   dontBuild = true;
 
   postPatch = ''
+    # Newer Noctalia v5 builds require a minimum shell version, not just
+    # plugin_api. Retain plugin_api for older API-23 builds.
+    substituteInPlace bb-auth/plugin.toml \
+      --replace-fail 'plugin_api = 23' 'plugin_api = 23
+    min_noctalia = "5.0.0"'
+
     substituteInPlace bb-auth/service.luau \
       --replace-fail '"python3 "' '"${python3}/bin/python3 "'
 
@@ -40,6 +46,27 @@ stdenvNoCC.mkDerivation {
     mkdir -p "$out"
     cp -r bb-auth catalog.toml "$out/"
     runHook postInstall
+  '';
+
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    ${python3}/bin/python3 - "$out/bb-auth" <<'PY'
+    import pathlib
+    import sys
+    import tomllib
+
+    plugin = pathlib.Path(sys.argv[1])
+    manifest = tomllib.loads((plugin / "plugin.toml").read_text())
+    assert manifest["id"] == "branrgx/bb-auth"
+    assert manifest["name"]
+    assert manifest["min_noctalia"] == "5.0.0"
+    assert manifest["plugin_api"] == 23
+    for kind in ("service", "panel"):
+        for entry in manifest[kind]:
+            assert (plugin / entry["entry"]).is_file(), entry
+    PY
+    runHook postInstallCheck
   '';
 
   meta = {
