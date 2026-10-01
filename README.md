@@ -1,77 +1,49 @@
 # bb-auth-noctalia-nix
 
-Noctalia-themed authentication prompts for Polkit, GPG and keyring unlocks,
-using [`bb-auth`](https://github.com/branrgx/bb-auth) and its
-[Noctalia plugin](https://github.com/branrgx/noctalia-plugins/tree/main/bb-auth).
+Home Manager integration for [`bb-auth`](https://github.com/branrgx/bb-auth) and its
+[Noctalia UI plugin](https://github.com/branrgx/noctalia-plugins/tree/main/bb-auth),
+for Polkit, GPG pinentry and GNOME Keyring prompts.
 
-## Usage
+## Requirements
 
-1. Add the flake input:
+- Linux, a systemd user session, Wayland and Noctalia v5 with plugin API 23.
+- Home Manager with TOML-based `programs.noctalia.settings` and
+  `services.gpg-agent.pinentry` options.
+- A desktop session that starts Noctalia and `wayland.systemd.target`, importing
+  `WAYLAND_DISPLAY` into the systemd user environment before starting the target.
 
-   ```nix
-   inputs.bb-auth-noctalia.url = "github:mvanderloo/bb-auth-noctalia-nix";
-   ```
+Host Polkit and GNOME Keyring services, storage and PAM unlock are outside this
+module's scope.
 
-2. Import the Home Manager module and enable it:
+## Installation
 
-   ```nix
-   { inputs, ... }:
-   {
-     imports = [ inputs.bb-auth-noctalia.homeModules.default ];
-     programs.noctalia.bb-auth.enable = true;
-   }
-   ```
-
-   Pass `inputs` through Home Manager's `extraSpecialArgs` for this example.
-
-That single switch enables Noctalia, installs its authentication plugin, starts
-bb-auth, replaces Noctalia's built-in Polkit agent, configures Home Manager's
-GPG agent with `pinentry-bb`, and registers keyring prompt activation. Importing
-the module without enabling it has no effect.
-
-## Session requirements
-
-Use Linux with a systemd user session, Wayland, and Noctalia v5 supporting plugin
-API 23. Home Manager must provide the TOML-based `programs.noctalia.settings`
-and `services.gpg-agent.pinentry` options.
-
-Start Noctalia through your desktop/session configuration; enabling its Home
-Manager module does not launch the shell. The bb-auth service follows
-`wayland.systemd.target`. Your session must start that target and import
-`WAYLAND_DISPLAY` into the systemd user environment first.
-
-System Polkit and keyring storage/PAM unlock remain the host's responsibility.
-This module supplies their prompts, not those services. No greeter is required.
-
-## Options
-
-Most configurations need only `programs.noctalia.bb-auth.enable = true`.
-
-To keep an existing GPG agent/pinentry or keyring prompter, opt out of that
-integration before activation:
+Add the flake input:
 
 ```nix
-programs.noctalia.bb-auth = {
-  gpgAgent.enable = false;
-  keyring.enable = false;
-};
+inputs.bb-auth-noctalia.url = "github:mvanderloo/bb-auth-noctalia-nix";
 ```
 
-Both integrations default to `true` when the module is enabled. Existing
-conflicting pinentry or SystemPrompter declarations must be removed or opted out
-of; this module does not force overrides.
+Import the module in Home Manager, passing `inputs` through `extraSpecialArgs`:
 
-Advanced users can override `programs.noctalia.bb-auth.package` and
-`programs.noctalia.bb-auth.pluginPackage`. Defaults use this repository's package
-recipes with your Home Manager `pkgs`; no overlay is needed. Replacements must
-preserve the backend's executable/D-Bus file layout and the plugin's
-`branrgx/bb-auth` catalog entry, respectively.
+```nix
+{ inputs, ... }:
+{
+  imports = [ inputs.bb-auth-noctalia.homeModules.default ];
+  programs.noctalia.bb-auth.enable = true;
+}
+```
 
-## Other plugins
+This disables Noctalia's built-in Polkit agent, configures GPG to use
+`pinentry-bb`, and registers bb-auth for keyring prompts. Disable any separately
+configured Polkit agents too. The module enables Noctalia's Home Manager
+configuration and plugin; it does not launch Noctalia. The bb-auth user service
+starts with `wayland.systemd.target`.
 
-The module adds the local `branrgx` source and merges with your existing plugin
-lists. An explicit source list replaces Noctalia's built-in catalog defaults.
-If you want official/community catalogs too, declare them once:
+### Plugin catalogs
+
+The module declares a local `branrgx` catalog. This replaces Noctalia's implicit
+catalog defaults, but merges with explicitly configured source and enabled-plugin
+lists. To retain the official/community catalogs, declare them once:
 
 ```nix
 programs.noctalia.settings.plugins.source = [
@@ -91,30 +63,48 @@ programs.noctalia.settings.plugins.source = [
 Use an attribute set for `programs.noctalia.settings` so settings can merge.
 Do not separately declare the `branrgx` source or enable `branrgx/bb-auth` again.
 
-## Development
+## Options
 
-```sh
-nix build .#bb-auth
-nix build .#noctalia-bb-auth-plugin
-nix flake check
-nix flake check --all-systems --no-build
-nix fmt
+To retain an existing GPG agent/pinentry or keyring prompter, disable the
+corresponding integration:
+
+```nix
+programs.noctalia.bb-auth = {
+  gpgAgent.enable = false;
+  keyring.enable = false;
+};
 ```
 
-Checks cover the one-switch setup, disabled configuration, integration opt-outs,
-existing catalogs/pinentry, package overrides and session targeting. They also
-validate generated Noctalia configuration and GPG/D-Bus files. Live authentication
-is not tested; cross-system evaluation does not build ARM packages.
+Both default to `true`. Remove conflicting pinentry/SystemPrompter declarations
+or opt out; the module does not force overrides.
 
-The Home Manager input is pinned **only for these checks**. Importing the module
-does not select or change the consumer's Home Manager version.
+`programs.noctalia.bb-auth.package` and `pluginPackage` override the backend and
+plugin packages. Replacements must preserve the executable/D-Bus file layout and
+`branrgx/bb-auth` catalog entry. Defaults use your Home Manager `pkgs`; the optional
+`overlays.default` exposes both packages but is not required by the module.
 
-The optional `overlays.default` exposes both packages through `pkgs`; module
-package overrides remain explicit.
+## Checks
 
-## Packaging
+```sh
+nix build --no-link .#bb-auth .#noctalia-bb-auth-plugin
+nix flake check
+nix flake check --all-systems --no-build
+```
 
-Home Manager replaces upstream's imperative bootstrap. Only the graphical
-fallback is Qt-wrapped, preserving the backend's `argv[0]` dispatch. The plugin
-uses Nix's Python and hands transient prompt responses through the private
-`XDG_RUNTIME_DIR`, removing them after reading.
+The backend runs upstream C++ tests during builds. Home Manager checks cover
+module configuration and generated files, not live authentication or D-Bus
+activation. `--all-systems --no-build` only evaluates; it does not build ARM
+packages. The pinned Home Manager input is used only by checks.
+
+### Manual desktop check
+
+On a configured desktop, with authentication caches cleared or expired:
+
+- Trigger Polkit authentication, a passphrase-protected GPG operation and a locked
+  GNOME Keyring prompt. Confirm each uses the Noctalia UI.
+- For each prompt, check successful submission, cancellation and retry after an
+  incorrect password. Confirm the requesting application receives the result.
+- With Noctalia stopped and bb-auth running, repeat the requests and record
+  fallback behavior, including any errors or hangs. Restart Noctalia afterward.
+
+These are manual checks to perform, not automated test results.
